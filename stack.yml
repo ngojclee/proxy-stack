@@ -1,21 +1,21 @@
 # proxy-stack — standardized authenticated proxy node (HTTP :3128 + SOCKS5 :1080)
-# Deploy: Portainer → Stacks → Add stack → Repository
+# Fully self-contained: no SSH prep needed. Deploy =
+#   Portainer → Stacks → Add stack → Repository
 #   URL: https://gitea.lengoc.me/apps/proxy-stack   (public internal repo, no auth)
 #   Compose path: stack.yml
 #
 # Env to fill in Portainer (the ONLY per-node settings):
 #   PROXY_USER     proxy username            (default: louis)
 #   PROXY_PASSWORD proxy password  (REQUIRED — no default)
-#   DATA_DIR       host dir for logs+f2b     (default: /home/Docker)
+#   DATA_DIR       host dir for logs+f2b db  (default: /home/Docker)
 #   SOCKS_PORT     host port for SOCKS5      (default: 1080)
 #   HTTP_PORT      host port for HTTP proxy  (default: 3128)
 #   TZ             container timezone        (default: Europe/Paris)
-#
-# One-time host prep (egress isolation + fail2ban jails):
-#   wget -qO- https://gitea.lengoc.me/apps/proxy-stack/raw/branch/main/bootstrap.sh | sh
 services:
   3proxy:
-    build: .
+    build:
+      context: .
+      target: proxy
     container_name: 3proxy
     restart: unless-stopped
     read_only: true
@@ -37,7 +37,9 @@ services:
       - proxynet
 
   fail2ban:
-    image: crazymax/fail2ban:latest
+    build:
+      context: .
+      target: f2b
     container_name: fail2ban-3proxy
     restart: unless-stopped
     network_mode: host
@@ -49,18 +51,32 @@ services:
       F2B_LOG_LEVEL: INFO
       IPTABLES_MODE: auto
     volumes:
-      - ${DATA_DIR:-/home/Docker}/fail2ban/data:/data
       - ${DATA_DIR:-/home/Docker}/3proxy/logs:/var/log/3proxy:ro
-    labels:
-      - "com.centurylinklabs.watchtower.enable=true"
+      # Only the ban db persists on the host; filter/jail are baked into the
+      # image so no host prep is needed. Bans also survive stack redeploys.
+      - ${DATA_DIR:-/home/Docker}/fail2ban/db:/data/db
     depends_on:
       - 3proxy
+
+  # Applies host-side egress isolation for the proxynet bridge: the proxy
+  # container can reach the Internet only — no private/LAN/NetBird/mesh
+  # destinations, and DNS is restricted to public resolvers.
+  egress-guard:
+    build:
+      context: .
+      target: guard
+    container_name: proxy-egress-guard
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
 
 networks:
   proxynet:
     driver: bridge
     ipam:
       config:
-        # Fixed subnet so the host-side egress rules (proxy-egress.sh) can
-        # match this container. Picked outside every LAN/mesh range.
+        # Fixed subnet so proxy-egress.sh can match this container.
+        # Picked outside every LAN/mesh range.
         - subnet: 172.31.255.0/24

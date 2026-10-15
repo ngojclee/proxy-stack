@@ -1,7 +1,4 @@
 .git
 docs
 README.md
-bootstrap.sh
-egress
-fail2ban
 stack.yml

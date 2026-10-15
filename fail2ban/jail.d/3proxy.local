@@ -13,7 +13,10 @@ ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10
 [3proxy]
 enabled = true
 filter = 3proxy
+# placeholder.log always exists inside the image so the jail survives a
+# cold start before 3proxy has written its first log line.
 logpath = /var/log/3proxy/3proxy.log
+          /data/placeholder.log
 backend = polling
 port = 1080,3128
 protocol = tcp
