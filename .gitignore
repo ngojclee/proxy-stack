@@ -1,5 +1,6 @@
 docs/
 *.bak
 *.log
+!fail2ban/placeholder.log
 credentials*.txt
 passwd
