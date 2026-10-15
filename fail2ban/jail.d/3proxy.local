@@ -1,0 +1,24 @@
+# proxy-stack fail2ban jail — bans clients that fail proxy auth.
+# Runs inside the fail2ban container (network_mode: host) so bans hit the
+# host firewall via DOCKER-USER.
+# ignoreip covers every internal client range — legit LAN/mesh users must
+# never be banned.
+[DEFAULT]
+bantime = -1
+findtime = 600
+maxretry = 5
+backend = auto
+ignoreip = 127.0.0.1/8 ::1 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 100.64.0.0/10
+
+[3proxy]
+enabled = true
+filter = 3proxy
+logpath = /var/log/3proxy/3proxy.log
+backend = polling
+port = 1080,3128
+protocol = tcp
+maxretry = 5
+findtime = 600
+bantime = -1
+chain = DOCKER-USER
+action = iptables-multiport[name=3proxy, port="1080,3128", protocol=tcp, chain=DOCKER-USER]

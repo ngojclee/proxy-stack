@@ -1,0 +1,66 @@
+# proxy-stack — standardized authenticated proxy node (HTTP :3128 + SOCKS5 :1080)
+# Deploy: Portainer → Stacks → Add stack → Repository
+#   URL: https://gitea.lengoc.me/apps/proxy-stack   (public internal repo, no auth)
+#   Compose path: stack.yml
+#
+# Env to fill in Portainer (the ONLY per-node settings):
+#   PROXY_USER     proxy username            (default: louis)
+#   PROXY_PASSWORD proxy password  (REQUIRED — no default)
+#   DATA_DIR       host dir for logs+f2b     (default: /home/Docker)
+#   SOCKS_PORT     host port for SOCKS5      (default: 1080)
+#   HTTP_PORT      host port for HTTP proxy  (default: 3128)
+#   TZ             container timezone        (default: Europe/Paris)
+#
+# One-time host prep (egress isolation + fail2ban jails):
+#   wget -qO- https://gitea.lengoc.me/apps/proxy-stack/raw/branch/main/bootstrap.sh | sh
+services:
+  3proxy:
+    build: .
+    container_name: 3proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp
+    environment:
+      PROXY_USER: ${PROXY_USER:-louis}
+      PROXY_PASSWORD: ${PROXY_PASSWORD:?Set PROXY_PASSWORD in the stack env}
+      TZ: ${TZ:-Europe/Paris}
+    ports:
+      - "${SOCKS_PORT:-1080}:1080"
+      - "${HTTP_PORT:-3128}:3128"
+    dns:
+      - 1.1.1.1
+      - 1.0.0.1
+    volumes:
+      - ${DATA_DIR:-/home/Docker}/3proxy/logs:/var/log/3proxy
+    networks:
+      - proxynet
+
+  fail2ban:
+    image: crazymax/fail2ban:latest
+    container_name: fail2ban-3proxy
+    restart: unless-stopped
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      TZ: ${TZ:-Europe/Paris}
+      F2B_LOG_LEVEL: INFO
+      IPTABLES_MODE: auto
+    volumes:
+      - ${DATA_DIR:-/home/Docker}/fail2ban/data:/data
+      - ${DATA_DIR:-/home/Docker}/3proxy/logs:/var/log/3proxy:ro
+    labels:
+      - "com.centurylinklabs.watchtower.enable=true"
+    depends_on:
+      - 3proxy
+
+networks:
+  proxynet:
+    driver: bridge
+    ipam:
+      config:
+        # Fixed subnet so the host-side egress rules (proxy-egress.sh) can
+        # match this container. Picked outside every LAN/mesh range.
+        - subnet: 172.31.255.0/24
